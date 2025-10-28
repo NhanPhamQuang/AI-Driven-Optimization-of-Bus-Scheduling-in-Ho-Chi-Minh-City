@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 
 from .base_collector import BaseCollector
 from .config import DataIngestionConfig
+from .utils import safe_print, EMOJI
 
 
 class BusRouteCollector(BaseCollector):
@@ -25,51 +26,55 @@ class BusRouteCollector(BaseCollector):
         Returns:
             DataFrame with columns: Route_Number, Route_Name, URL
         """
-        self.logger.info("Collecting bus route list from xebuyt.net")
+        with self._timer("Collecting bus route list"):
+            response = self._make_request(self.config.XEBUYT_ROUTE_LIST_URL)
+            if not response:
+                self.logger.error("Failed to fetch route list")
+                return pd.DataFrame()
 
-        response = self._make_request(self.config.XEBUYT_ROUTE_LIST_URL)
-        if not response:
-            self.logger.error("Failed to fetch route list")
-            return pd.DataFrame()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            div_result = soup.find('div', id='divResult')
 
-        soup = BeautifulSoup(response.content, 'html.parser')
-        div_result = soup.find('div', id='divResult')
+            if not div_result:
+                self.logger.error("Could not find route list container")
+                return pd.DataFrame()
 
-        if not div_result:
-            self.logger.error("Could not find route list container")
-            return pd.DataFrame()
+            route_links = div_result.find_all('a', class_='cms-button')
+            routes = []
 
-        route_links = div_result.find_all('a', class_='cms-button')
-        routes = []
+            safe_print(f"{EMOJI['location']} Found {len(route_links)} routes, parsing...")
 
-        for link in route_links:
-            href = link.get('href')
-            if not href:
-                continue
+            for i, link in enumerate(route_links, 1):
+                href = link.get('href')
+                if not href:
+                    continue
 
-            full_url = f"{self.config.XEBUYT_BASE_URL}{href}" if href.startswith('/') else href
+                full_url = f"{self.config.XEBUYT_BASE_URL}{href}" if href.startswith('/') else href
 
-            # Get route number from span.icon
-            icon_span = link.find('span', class_='icon')
-            route_number = icon_span.get_text(strip=True) if icon_span else ''
+                # Get route number from span.icon
+                icon_span = link.find('span', class_='icon')
+                route_number = icon_span.get_text(strip=True) if icon_span else ''
 
-            # Get route name from div.routetrip
-            routetrip_div = link.find('div', class_='routetrip')
-            route_name = routetrip_div.get_text(strip=True) if routetrip_div else ''
+                # Get route name from div.routetrip
+                routetrip_div = link.find('div', class_='routetrip')
+                route_name = routetrip_div.get_text(strip=True) if routetrip_div else ''
 
-            routes.append({
-                'Route_Number': route_number,
-                'Route_Name': route_name,
-                'URL': full_url
-            })
+                routes.append({
+                    'Route_Number': route_number,
+                    'Route_Name': route_name,
+                    'URL': full_url
+                })
 
-            self._rate_limit()
+                # Show progress every 10 routes
+                if i % 10 == 0 or i == len(route_links):
+                    self._print_progress(i, len(route_links), "Parsing routes")
 
-        df = pd.DataFrame(routes)
-        self.routes_cache = df
-        self.logger.info(f"Collected {len(df)} routes")
+                self._rate_limit()
 
-        return df
+            df = pd.DataFrame(routes)
+            self.routes_cache = df
+
+            return df
 
     def collect_route_details(self, route_url: str) -> Dict[str, Any]:
         """
@@ -168,19 +173,24 @@ class BusRouteCollector(BaseCollector):
         if self.routes_cache is None:
             self.collect_route_list()
 
-        self.logger.info("Collecting detailed information for all routes")
+        with self._timer("Collecting detailed route information"):
+            total_routes = len(self.routes_cache)
+            all_details = []
 
-        all_details = []
-        for _, route in self.routes_cache.iterrows():
-            details = self.collect_route_details(route['URL'])
-            all_details.append({
-                'Route_Number': route['Route_Number'],
-                'Route_Name': route['Route_Name'],
-                'URL': route['URL'],
-                **details
-            })
+            safe_print(f"\n{EMOJI['chart']} Collecting details for {total_routes} routes...")
 
-        return pd.DataFrame(all_details)
+            for i, (_, route) in enumerate(self.routes_cache.iterrows(), 1):
+                details = self.collect_route_details(route['URL'])
+                all_details.append({
+                    'Route_Number': route['Route_Number'],
+                    'Route_Name': route['Route_Name'],
+                    'URL': route['URL'],
+                    **details
+                })
+
+                self._print_progress(i, total_routes, "Fetching details")
+
+            return pd.DataFrame(all_details)
 
     def collect_route_variants_api(self, route_id: int, direction: int = 1) -> List[Dict[str, Any]]:
         """
@@ -319,25 +329,27 @@ class BusRouteCollector(BaseCollector):
         Returns:
             Dictionary mapping route IDs to their data
         """
-        self.logger.info(f"Collecting data for routes 1-{max_route_id}")
+        with self._timer(f"Collecting API data for routes 1-{max_route_id}"):
+            all_routes = {}
+            routes_found = 0
 
-        all_routes = {}
+            safe_print(f"\n{EMOJI['search']} Scanning routes 1-{max_route_id} via API...")
 
-        for route_id in range(1, max_route_id + 1):
-            # First check if route exists
-            variants = self.collect_route_variants_api(route_id, 1)
-            if not variants:
-                self.logger.debug(f"No data for route {route_id}")
-                continue
+            for route_id in range(1, max_route_id + 1):
+                # First check if route exists
+                variants = self.collect_route_variants_api(route_id, 1)
+                if not variants:
+                    continue
 
-            # Collect complete data
-            route_data = self.collect_complete_route_data(route_id)
-            all_routes[route_id] = route_data
+                # Collect complete data
+                route_data = self.collect_complete_route_data(route_id)
+                all_routes[route_id] = route_data
+                routes_found += 1
 
-            self.logger.info(f"Collected data for route {route_id}")
+                print(f"{EMOJI['check']} Route {route_id:3d} collected ({routes_found} total)", end='\r', flush=True)
 
-        self.logger.info(f"Collected data for {len(all_routes)} routes")
-        return all_routes
+            safe_print(f"\n{EMOJI['check']} Collected data for {len(all_routes)} routes")
+            return all_routes
 
     def collect(self, **kwargs) -> Dict[str, Any]:
         """

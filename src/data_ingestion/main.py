@@ -4,6 +4,7 @@ Main data ingestion script
 
 import os
 import json
+import time
 from datetime import datetime, timedelta
 import pandas as pd
 
@@ -12,6 +13,7 @@ from .bus_route_collector import BusRouteCollector
 from .weather_collector import WeatherCollector
 from .event_collector import EventCollector
 from .synthetic_data_generator import SyntheticDataGenerator
+from .utils import safe_print, EMOJI
 
 
 class DataIngestionPipeline:
@@ -36,20 +38,27 @@ class DataIngestionPipeline:
         Returns:
             Dictionary with all collected data
         """
-        print("=" * 80)
-        print("Starting real data collection...")
-        print("=" * 80)
+        overall_start = time.time()
+
+        safe_print("\n" + "=" * 80)
+        safe_print(f"{EMOJI['rocket']} STARTING REAL DATA COLLECTION")
+        safe_print("=" * 80)
 
         result = {}
 
         # 1. Collect bus route data
-        print("\n[1/3] Collecting bus route data...")
+        safe_print("\n" + ">" * 40)
+        safe_print(f"[1/3] {EMOJI['bus']} COLLECTING BUS ROUTE DATA")
+        safe_print(">" * 40)
+
+        step_start = time.time()
         bus_data = self.bus_collector.collect(
             include_details=True,
             include_api_data=True,
             max_route_id=150  # Adjust based on needs
         )
         result['bus_data'] = bus_data
+        safe_print(f"\n{EMOJI['timer']} Step 1 completed in {time.time() - step_start:.2f}s")
 
         if save:
             # Save route list
@@ -75,9 +84,14 @@ class DataIngestionPipeline:
                 print(f"  Saved API data for {len(bus_data['api_data'])} routes")
 
         # 2. Collect weather data
-        print("\n[2/3] Collecting weather data...")
+        safe_print("\n" + ">" * 40)
+        safe_print(f"[2/3] {EMOJI['weather']} COLLECTING WEATHER DATA")
+        safe_print(">" * 40)
+
+        step_start = time.time()
         weather_data = self.weather_collector.collect(mode='current')
         result['weather_data'] = weather_data
+        safe_print(f"\n{EMOJI['timer']} Step 2 completed in {time.time() - step_start:.2f}s")
 
         if save and 'current' in weather_data:
             with open(os.path.join(self.config.RAW_DATA_DIR, 'weather_current.json'), 'w') as f:
@@ -85,7 +99,11 @@ class DataIngestionPipeline:
             print(f"  Saved current weather data")
 
         # 3. Collect event data (synthetic for now)
-        print("\n[3/3] Collecting event data...")
+        safe_print("\n" + ">" * 40)
+        safe_print(f"[3/3] {EMOJI['party']} COLLECTING EVENT DATA")
+        safe_print(">" * 40)
+
+        step_start = time.time()
         event_data = self.event_collector.collect(
             mode='synthetic',
             start_date=datetime.now(),
@@ -93,6 +111,7 @@ class DataIngestionPipeline:
             num_events=20
         )
         result['event_data'] = event_data
+        safe_print(f"\n{EMOJI['timer']} Step 3 completed in {time.time() - step_start:.2f}s")
 
         if save and 'synthetic' in event_data:
             event_data['synthetic'].to_csv(
@@ -101,9 +120,12 @@ class DataIngestionPipeline:
             )
             print(f"  Saved {len(event_data['synthetic'])} events to events.csv")
 
-        print("\n" + "=" * 80)
-        print("Real data collection complete!")
-        print("=" * 80)
+        total_time = time.time() - overall_start
+
+        safe_print("\n" + "=" * 80)
+        safe_print(f"{EMOJI['check']} REAL DATA COLLECTION COMPLETE!")
+        safe_print(f"{EMOJI['timer']} Total time: {total_time:.2f}s ({total_time/60:.2f} minutes)")
+        safe_print("=" * 80)
 
         return result
 
@@ -117,16 +139,22 @@ class DataIngestionPipeline:
         Returns:
             Dictionary with all synthetic data
         """
-        print("=" * 80)
-        print("Starting synthetic data generation...")
-        print("=" * 80)
+        overall_start = time.time()
+
+        safe_print("\n" + "=" * 80)
+        safe_print(f"{EMOJI['crystal_ball']} STARTING SYNTHETIC DATA GENERATION")
+        safe_print("=" * 80)
 
         # Set time range (e.g., one day from 6 AM to 6 PM)
         start_time = datetime.now().replace(hour=6, minute=0, second=0, microsecond=0)
         end_time = start_time.replace(hour=18, minute=0, second=0)
 
         # Generate complete dataset
-        print("\n[1/3] Generating bus demand and GPS data...")
+        safe_print("\n" + ">" * 40)
+        safe_print(f"[1/3] {EMOJI['bus']} GENERATING BUS DEMAND AND GPS DATA")
+        safe_print(">" * 40)
+
+        step_start = time.time()
         bus_data = self.synthetic_generator.collect(
             num_routes=5,
             stops_per_route=5,
@@ -134,24 +162,35 @@ class DataIngestionPipeline:
             start_time=start_time,
             end_time=end_time
         )
+        safe_print(f"\n{EMOJI['timer']} Step 1 completed in {time.time() - step_start:.2f}s")
 
         # Generate weather data
-        print("\n[2/3] Generating weather data...")
+        safe_print("\n" + ">" * 40)
+        safe_print(f"[2/3] {EMOJI['weather']} GENERATING WEATHER DATA")
+        safe_print(">" * 40)
+
+        step_start = time.time()
         weather_data = self.weather_collector.collect(
             mode='synthetic',
             start_time=start_time,
             end_time=end_time,
             interval_minutes=15
         )
+        safe_print(f"\n{EMOJI['timer']} Step 2 completed in {time.time() - step_start:.2f}s")
 
         # Generate event data
-        print("\n[3/3] Generating event data...")
+        safe_print("\n" + ">" * 40)
+        safe_print(f"[3/3] {EMOJI['party']} GENERATING EVENT DATA")
+        safe_print(">" * 40)
+
+        step_start = time.time()
         event_data = self.event_collector.collect(
             mode='synthetic',
             start_date=start_time,
             end_date=start_time + timedelta(days=7),
             num_events=10
         )
+        safe_print(f"\n{EMOJI['timer']} Step 3 completed in {time.time() - step_start:.2f}s")
 
         result = {
             'bus_data': bus_data,
@@ -160,34 +199,40 @@ class DataIngestionPipeline:
         }
 
         if save:
+            safe_print("\n" + "=" * 80)
+            safe_print(f"{EMOJI['floppy']} SAVING DATA TO FILES")
+            safe_print("=" * 80)
+
+            save_start = time.time()
+
             # Save bus data
             for key, df in bus_data.items():
                 filename = f"synthetic_{key}.csv"
-                df.to_csv(
-                    os.path.join(self.config.RAW_DATA_DIR, filename),
-                    index=False
-                )
-                print(f"  Saved {len(df)} records to {filename}")
+                filepath = os.path.join(self.config.RAW_DATA_DIR, filename)
+                df.to_csv(filepath, index=False)
+                safe_print(f"  {EMOJI['check']} Saved {len(df):,} records to {filename}")
 
             # Save weather data
             if 'synthetic' in weather_data:
-                weather_data['synthetic'].to_csv(
-                    os.path.join(self.config.RAW_DATA_DIR, 'synthetic_weather.csv'),
-                    index=False
-                )
-                print(f"  Saved weather data")
+                filepath = os.path.join(self.config.RAW_DATA_DIR, 'synthetic_weather.csv')
+                weather_data['synthetic'].to_csv(filepath, index=False)
+                safe_print(f"  {EMOJI['check']} Saved {len(weather_data['synthetic']):,} weather records")
 
             # Save event data
             if 'synthetic' in event_data:
-                event_data['synthetic'].to_csv(
-                    os.path.join(self.config.RAW_DATA_DIR, 'synthetic_events.csv'),
-                    index=False
-                )
-                print(f"  Saved event data")
+                filepath = os.path.join(self.config.RAW_DATA_DIR, 'synthetic_events.csv')
+                event_data['synthetic'].to_csv(filepath, index=False)
+                safe_print(f"  {EMOJI['check']} Saved {len(event_data['synthetic']):,} events")
 
-        print("\n" + "=" * 80)
-        print("Synthetic data generation complete!")
-        print("=" * 80)
+            safe_print(f"\n{EMOJI['timer']} Data saved in {time.time() - save_start:.2f}s")
+            safe_print(f"{EMOJI['folder']} Location: {self.config.RAW_DATA_DIR}")
+
+        total_time = time.time() - overall_start
+
+        safe_print("\n" + "=" * 80)
+        safe_print(f"{EMOJI['check']} SYNTHETIC DATA GENERATION COMPLETE!")
+        safe_print(f"{EMOJI['timer']} Total time: {total_time:.2f}s")
+        safe_print("=" * 80)
 
         return result
 

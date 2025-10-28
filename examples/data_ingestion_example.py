@@ -175,8 +175,8 @@ def example_6_full_pipeline():
 def main():
     """Run all examples"""
     examples = [
-        # example_1_collect_bus_routes,  # Uncomment to run (requires internet)
-        # example_2_collect_api_data,     # Uncomment to run (requires internet)
+        example_1_collect_bus_routes,  # Uncomment to run (requires internet)
+        example_2_collect_api_data,     # Uncomment to run (requires internet)
         example_3_generate_synthetic_data,
         example_4_collect_weather,
         example_5_collect_events,

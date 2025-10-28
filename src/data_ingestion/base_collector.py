@@ -7,6 +7,7 @@ import logging
 from typing import Optional, Dict, Any
 import requests
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 
 from .config import DataIngestionConfig
 
@@ -94,6 +95,50 @@ class BaseCollector(ABC):
     def _rate_limit(self):
         """Apply rate limiting between requests"""
         time.sleep(self.config.REQUEST_DELAY)
+
+    @contextmanager
+    def _timer(self, operation_name: str):
+        """
+        Context manager for timing operations
+
+        Args:
+            operation_name: Name of the operation being timed
+
+        Yields:
+            Dictionary to store timing info
+        """
+        start_time = time.time()
+        timing_info = {'start': start_time}
+
+        self.logger.info(f"⏳ Starting: {operation_name}")
+
+        try:
+            yield timing_info
+        finally:
+            elapsed = time.time() - start_time
+            timing_info['elapsed'] = elapsed
+            self.logger.info(f"✅ Completed: {operation_name} (took {elapsed:.2f}s)")
+
+    def _print_progress(self, current: int, total: int, prefix: str = "Progress"):
+        """
+        Print progress bar to console
+
+        Args:
+            current: Current item number
+            total: Total number of items
+            prefix: Prefix text for progress bar
+        """
+        bar_length = 40
+        filled_length = int(bar_length * current / total)
+        bar = '=' * filled_length + '-' * (bar_length - filled_length)
+        percent = 100 * (current / total)
+        try:
+            print(f'\r{prefix}: |{bar}| {percent:.1f}% ({current}/{total})', end='', flush=True)
+        except UnicodeEncodeError:
+            # Fallback for systems with encoding issues
+            print(f'\r{prefix}: {percent:.1f}% ({current}/{total})', end='', flush=True)
+        if current == total:
+            print()  # New line when complete
 
     @abstractmethod
     def collect(self, **kwargs) -> Any:

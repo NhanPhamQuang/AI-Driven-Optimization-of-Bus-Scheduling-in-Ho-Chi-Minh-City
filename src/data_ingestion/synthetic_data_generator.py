@@ -9,6 +9,7 @@ import pandas as pd
 
 from .base_collector import BaseCollector
 from .config import DataIngestionConfig
+from .utils import safe_print, EMOJI
 
 
 class SyntheticDataGenerator(BaseCollector):
@@ -39,65 +40,68 @@ class SyntheticDataGenerator(BaseCollector):
         Returns:
             DataFrame with passenger demand data
         """
-        self.logger.info(f"Generating passenger demand from {start_time} to {end_time}")
+        with self._timer("Generating passenger demand data"):
+            # Create time slots
+            time_slots = []
+            current = start_time
+            while current <= end_time:
+                time_slots.append(current)
+                current += timedelta(minutes=interval_minutes)
 
-        # Create time slots
-        time_slots = []
-        current = start_time
-        while current <= end_time:
-            time_slots.append(current)
-            current += timedelta(minutes=interval_minutes)
+            safe_print(f"{EMOJI['chart']} Generating demand for {len(routes)} routes, {len(time_slots)} time slots...")
 
-        data = []
+            data = []
+            total_iterations = len(routes)
 
-        for route in routes:
-            stops = stops_per_route.get(route, [])
-            if not stops:
-                continue
+            for route_idx, route in enumerate(routes, 1):
+                stops = stops_per_route.get(route, [])
+                if not stops:
+                    continue
 
-            for stop in stops:
-                for t in time_slots:
-                    hour = t.hour
-                    day_of_week = t.weekday()  # 0 = Monday
+                for stop in stops:
+                    for t in time_slots:
+                        hour = t.hour
+                        day_of_week = t.weekday()  # 0 = Monday
 
-                    # Base demand varies by hour
-                    if hour in [7, 8, 16, 17]:  # Peak hours
-                        mean = 120
-                        std = 30
-                    elif hour in [6, 9, 15, 18]:  # Shoulder hours
-                        mean = 80
-                        std = 20
-                    else:  # Off-peak
-                        mean = 40
-                        std = 15
+                        # Base demand varies by hour
+                        if hour in [7, 8, 16, 17]:  # Peak hours
+                            mean = 120
+                            std = 30
+                        elif hour in [6, 9, 15, 18]:  # Shoulder hours
+                            mean = 80
+                            std = 20
+                        else:  # Off-peak
+                            mean = 40
+                            std = 15
 
-                    # Weekend reduction
-                    if day_of_week >= 5:  # Saturday or Sunday
-                        mean *= 0.7
+                        # Weekend reduction
+                        if day_of_week >= 5:  # Saturday or Sunday
+                            mean *= 0.7
 
-                    # Generate demand
-                    passengers = max(0, int(np.random.normal(mean, std)))
+                        # Generate demand
+                        passengers = max(0, int(np.random.normal(mean, std)))
 
-                    # Boarding vs alighting (rough approximation)
-                    boarding = int(passengers * np.random.uniform(0.4, 0.6))
-                    alighting = passengers - boarding
+                        # Boarding vs alighting (rough approximation)
+                        boarding = int(passengers * np.random.uniform(0.4, 0.6))
+                        alighting = passengers - boarding
 
-                    data.append({
-                        'route': route,
-                        'stop': stop,
-                        'time': t.strftime('%Y-%m-%d %H:%M:%S'),
-                        'boarding_count': boarding,
-                        'alighting_count': alighting,
-                        'passengers': passengers,
-                        'hour': hour,
-                        'day_of_week': day_of_week,
-                        'is_weekend': int(day_of_week >= 5),
-                        'is_peak_hour': int(hour in [7, 8, 16, 17])
-                    })
+                        data.append({
+                            'route': route,
+                            'stop': stop,
+                            'time': t.strftime('%Y-%m-%d %H:%M:%S'),
+                            'boarding_count': boarding,
+                            'alighting_count': alighting,
+                            'passengers': passengers,
+                            'hour': hour,
+                            'day_of_week': day_of_week,
+                            'is_weekend': int(day_of_week >= 5),
+                            'is_peak_hour': int(hour in [7, 8, 16, 17])
+                        })
 
-        df = pd.DataFrame(data)
-        self.logger.info(f"Generated {len(df)} passenger demand records")
-        return df
+                self._print_progress(route_idx, total_iterations, "Generating demand")
+
+            df = pd.DataFrame(data)
+            return df
 
     def generate_gps_traces(
         self,
@@ -122,52 +126,55 @@ class SyntheticDataGenerator(BaseCollector):
         Returns:
             DataFrame with GPS traces
         """
-        self.logger.info(f"Generating GPS traces from {start_time} to {end_time}")
+        with self._timer("Generating GPS traces"):
+            # Create time slots
+            time_slots = []
+            current = start_time
+            while current <= end_time:
+                time_slots.append(current)
+                current += timedelta(minutes=interval_minutes)
 
-        # Create time slots
-        time_slots = []
-        current = start_time
-        while current <= end_time:
-            time_slots.append(current)
-            current += timedelta(minutes=interval_minutes)
+            safe_print(f"{EMOJI['location']} Generating GPS for {len(routes)} routes, {buses_per_route} buses each...")
 
-        data = []
+            data = []
+            total_iterations = len(routes)
 
-        for route in routes:
-            stops = stops_per_route.get(route, [])
-            if not stops:
-                continue
+            for route_idx, route in enumerate(routes, 1):
+                stops = stops_per_route.get(route, [])
+                if not stops:
+                    continue
 
-            for bus_id in range(1, buses_per_route + 1):
-                bus_identifier = f"{route}_Bus_{bus_id}"
+                for bus_id in range(1, buses_per_route + 1):
+                    bus_identifier = f"{route}_Bus_{bus_id}"
 
-                for t in time_slots:
-                    # Randomly select a stop (bus is somewhere on route)
-                    stop_name, base_lat, base_lng = stops[np.random.randint(0, len(stops))]
+                    for t in time_slots:
+                        # Randomly select a stop (bus is somewhere on route)
+                        stop_name, base_lat, base_lng = stops[np.random.randint(0, len(stops))]
 
-                    # Add small random variation to simulate movement
-                    lat = base_lat + np.random.uniform(-0.003, 0.003)
-                    lng = base_lng + np.random.uniform(-0.003, 0.003)
+                        # Add small random variation to simulate movement
+                        lat = base_lat + np.random.uniform(-0.003, 0.003)
+                        lng = base_lng + np.random.uniform(-0.003, 0.003)
 
-                    # Speed varies (0-60 km/h typical for city bus)
-                    speed = np.random.uniform(0, 60)
+                        # Speed varies (0-60 km/h typical for city bus)
+                        speed = np.random.uniform(0, 60)
 
-                    # Heading (0-360 degrees)
-                    heading = np.random.uniform(0, 360)
+                        # Heading (0-360 degrees)
+                        heading = np.random.uniform(0, 360)
 
-                    data.append({
-                        'route': route,
-                        'bus_id': bus_identifier,
-                        'time': t.strftime('%Y-%m-%d %H:%M:%S'),
-                        'latitude': round(lat, 6),
-                        'longitude': round(lng, 6),
-                        'speed': round(speed, 1),
-                        'heading': round(heading, 1)
-                    })
+                        data.append({
+                            'route': route,
+                            'bus_id': bus_identifier,
+                            'time': t.strftime('%Y-%m-%d %H:%M:%S'),
+                            'latitude': round(lat, 6),
+                            'longitude': round(lng, 6),
+                            'speed': round(speed, 1),
+                            'heading': round(heading, 1)
+                        })
 
-        df = pd.DataFrame(data)
-        self.logger.info(f"Generated {len(df)} GPS trace records")
-        return df
+                self._print_progress(route_idx, total_iterations, "Generating GPS")
+
+            df = pd.DataFrame(data)
+            return df
 
     def generate_route_stops(
         self,
