@@ -16,6 +16,7 @@ from src.data_ingestion import (
     SyntheticDataGenerator
 )
 from src.data_ingestion.main import DataIngestionPipeline
+from src.data_ingestion.utils import safe_print
 
 
 def example_1_collect_bus_routes():
@@ -150,9 +151,9 @@ def example_6_full_pipeline():
 
     pipeline = DataIngestionPipeline()
 
-    # Collect synthetic data (faster for demo)
-    print("\nRunning synthetic data collection pipeline...")
-    result = pipeline.collect_synthetic_data(save=False)
+    # Collect synthetic data (faster for demo) and SAVE to files
+    print("\nRunning synthetic data collection pipeline (saving to files)...")
+    result = pipeline.collect_synthetic_data(save=True)
 
     print("\n\nPipeline results:")
     print("=" * 80)
@@ -171,35 +172,81 @@ def example_6_full_pipeline():
     if 'event_data' in result and 'synthetic' in result['event_data']:
         print(f"\nEvent Data: {len(result['event_data']['synthetic'])} events")
 
+    safe_print("\n" + "-" * 80)
+    safe_print("[OK] Data files saved to: data/raw/")
+    safe_print("  - Check data/raw/ directory for generated CSV files")
+    safe_print("-" * 80)
+
 
 def main():
     """Run all examples"""
-    examples = [
-        example_1_collect_bus_routes,  # Uncomment to run (requires internet)
-        example_2_collect_api_data,     # Uncomment to run (requires internet)
-        example_3_generate_synthetic_data,
-        example_4_collect_weather,
-        example_5_collect_events,
-        example_6_full_pipeline,
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Data ingestion examples')
+    parser.add_argument(
+        '--include-web',
+        action='store_true',
+        help='Include examples that require internet connection'
+    )
+    parser.add_argument(
+        '--example',
+        type=int,
+        choices=range(1, 7),
+        help='Run only a specific example (1-6)'
+    )
+
+    args = parser.parse_args()
+
+    # Define all examples
+    all_examples = [
+        (1, example_1_collect_bus_routes, "Collect Bus Routes (requires internet)"),
+        (2, example_2_collect_api_data, "Collect API Data (requires internet)"),
+        (3, example_3_generate_synthetic_data, "Generate Synthetic Data"),
+        (4, example_4_collect_weather, "Collect Weather Data"),
+        (5, example_5_collect_events, "Collect Event Data"),
+        (6, example_6_full_pipeline, "Full Pipeline with Data Saving"),
     ]
+
+    # Filter examples based on arguments
+    if args.example:
+        examples_to_run = [(num, func, name) for num, func, name in all_examples if num == args.example]
+    elif args.include_web:
+        examples_to_run = all_examples
+    else:
+        # Run only examples that don't require internet (3-6)
+        examples_to_run = [(num, func, name) for num, func, name in all_examples if num >= 3]
 
     print("\n" + "=" * 80)
     print("DATA INGESTION LAYER EXAMPLES")
     print("=" * 80)
-    print("\nNote: Examples 1-2 are commented out by default as they require internet.")
-    print("Uncomment them in the code to run.")
 
-    for i, example in enumerate(examples, 1):
+    if not args.include_web and not args.example:
+        safe_print("\n>> Running examples that don't require internet (3-6)")
+        safe_print("   Use --include-web to run all examples")
+        safe_print("   Use --example N to run a specific example")
+
+    safe_print(f"\n> Running {len(examples_to_run)} example(s):\n")
+    for num, _, name in examples_to_run:
+        safe_print(f"   [{num}] {name}")
+
+    # Run examples
+    for num, example_func, name in examples_to_run:
         try:
-            example()
+            example_func()
         except Exception as e:
-            print(f"\n[ERROR in example {i}]: {e}")
+            safe_print(f"\n[X] [ERROR in example {num}]: {e}")
             import traceback
             traceback.print_exc()
+            print()
 
-    print("\n" + "=" * 80)
-    print("All examples completed!")
-    print("=" * 80)
+    safe_print("\n" + "=" * 80)
+    safe_print(f"[OK] Completed {len(examples_to_run)} example(s)!")
+    safe_print("=" * 80)
+    safe_print("\n>> Quick commands:")
+    safe_print("   python examples/data_ingestion_example.py                    # Run examples 3-6")
+    safe_print("   python examples/data_ingestion_example.py --include-web      # Run all examples")
+    safe_print("   python examples/data_ingestion_example.py --example 6        # Run only example 6")
+    print()
 
 
 if __name__ == '__main__':
