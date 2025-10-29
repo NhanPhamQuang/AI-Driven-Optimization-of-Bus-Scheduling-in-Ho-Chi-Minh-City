@@ -36,16 +36,16 @@ class PreprocessingPipeline:
         self.config.ensure_dirs()
 
         # Initialize components
-        self.cleaner = DataCleaner(config)
-        self.feature_engineer = FeatureEngineer(config)
-        self.normalizer = DataNormalizer(config)
+        self.cleaner = DataCleaner(self.config)
+        self.feature_engineer = FeatureEngineer(self.config)
+        self.normalizer = DataNormalizer(self.config)
 
         # Initialize database manager if available
         if HAS_DATABASE:
-            self.db_manager = DatabaseManager(config)
+            self.db_manager = DatabaseManager(self.config)
         else:
             self.db_manager = None
-            if config.USE_TIMESCALE:
+            if self.config.USE_TIMESCALE:
                 logger.warning("Database requested but sqlalchemy not installed. Install with: pip install sqlalchemy psycopg2-binary")
 
         self.pipeline_stats = {}
