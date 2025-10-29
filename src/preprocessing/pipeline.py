@@ -14,7 +14,14 @@ from .config import PreprocessingConfig
 from .data_cleaner import DataCleaner
 from .feature_engineering import FeatureEngineer
 from .normalizer import DataNormalizer
-from .database_manager import DatabaseManager
+
+# Optional database support
+try:
+    from .database_manager import DatabaseManager
+    HAS_DATABASE = True
+except ImportError:
+    DatabaseManager = None
+    HAS_DATABASE = False
 
 
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +39,14 @@ class PreprocessingPipeline:
         self.cleaner = DataCleaner(config)
         self.feature_engineer = FeatureEngineer(config)
         self.normalizer = DataNormalizer(config)
-        self.db_manager = DatabaseManager(config)
+
+        # Initialize database manager if available
+        if HAS_DATABASE:
+            self.db_manager = DatabaseManager(config)
+        else:
+            self.db_manager = None
+            if config.USE_TIMESCALE:
+                logger.warning("Database requested but sqlalchemy not installed. Install with: pip install sqlalchemy psycopg2-binary")
 
         self.pipeline_stats = {}
 
@@ -131,13 +145,16 @@ class PreprocessingPipeline:
 
         # Save to database
         if save_to_db:
-            logger.info("Saving to database...")
-            try:
-                self.db_manager.connect()
-                self.db_manager.save_dataframe(df, 'passenger_demand', if_exists='append')
-                self.db_manager.close()
-            except Exception as e:
-                logger.error(f"Failed to save to database: {e}")
+            if self.db_manager is None:
+                logger.warning("Database save requested but DatabaseManager not available. Install sqlalchemy and psycopg2-binary.")
+            else:
+                logger.info("Saving to database...")
+                try:
+                    self.db_manager.connect()
+                    self.db_manager.save_dataframe(df, 'passenger_demand', if_exists='append')
+                    self.db_manager.close()
+                except Exception as e:
+                    logger.error(f"Failed to save to database: {e}")
 
         total_time = time.time() - start_time
 
@@ -204,12 +221,15 @@ class PreprocessingPipeline:
 
         # Save to database
         if save_to_db:
-            try:
-                self.db_manager.connect()
-                self.db_manager.save_dataframe(df, 'gps_traces', if_exists='append')
-                self.db_manager.close()
-            except Exception as e:
-                logger.error(f"Failed to save to database: {e}")
+            if self.db_manager is None:
+                logger.warning("Database save requested but DatabaseManager not available. Install sqlalchemy and psycopg2-binary.")
+            else:
+                try:
+                    self.db_manager.connect()
+                    self.db_manager.save_dataframe(df, 'gps_traces', if_exists='append')
+                    self.db_manager.close()
+                except Exception as e:
+                    logger.error(f"Failed to save to database: {e}")
 
         total_time = time.time() - start_time
 
@@ -305,33 +325,40 @@ class PreprocessingPipeline:
 
         # Save to database
         if save_to_db:
-            logger.info("=" * 80)
-            logger.info("SAVING TO DATABASE")
-            logger.info("=" * 80)
+            if self.db_manager is None:
+                logger.warning("=" * 80)
+                logger.warning("DATABASE NOT AVAILABLE")
+                logger.warning("=" * 80)
+                logger.warning("Database save requested but DatabaseManager not available.")
+                logger.warning("Install with: pip install sqlalchemy psycopg2-binary")
+            else:
+                logger.info("=" * 80)
+                logger.info("SAVING TO DATABASE")
+                logger.info("=" * 80)
 
-            try:
-                self.db_manager.connect()
-                self.db_manager.create_tables()
+                try:
+                    self.db_manager.connect()
+                    self.db_manager.create_tables()
 
-                # Save each dataset
-                table_mapping = {
-                    'routes': 'routes',
-                    'stops': 'stops',
-                    'demand': 'passenger_demand',
-                    'gps': 'gps_traces',
-                    'weather': 'weather_data',
-                    'events': 'events'
-                }
+                    # Save each dataset
+                    table_mapping = {
+                        'routes': 'routes',
+                        'stops': 'stops',
+                        'demand': 'passenger_demand',
+                        'gps': 'gps_traces',
+                        'weather': 'weather_data',
+                        'events': 'events'
+                    }
 
-                for name, df in processed_data.items():
-                    if name in table_mapping:
-                        table_name = table_mapping[name]
-                        self.db_manager.save_dataframe(df, table_name, if_exists='append')
+                    for name, df in processed_data.items():
+                        if name in table_mapping:
+                            table_name = table_mapping[name]
+                            self.db_manager.save_dataframe(df, table_name, if_exists='append')
 
-                self.db_manager.close()
+                    self.db_manager.close()
 
-            except Exception as e:
-                logger.error(f"Failed to save to database: {e}")
+                except Exception as e:
+                    logger.error(f"Failed to save to database: {e}")
 
         total_time = time.time() - overall_start
 

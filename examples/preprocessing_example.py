@@ -13,9 +13,18 @@ import argparse
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.preprocessing import DataCleaner, FeatureEngineer, DataNormalizer, DatabaseManager
+from src.preprocessing import DataCleaner, FeatureEngineer, DataNormalizer
 from src.preprocessing.pipeline import PreprocessingPipeline
 from src.preprocessing.config import PreprocessingConfig
+
+# Check if database support is available
+try:
+    from src.preprocessing import DatabaseManager
+    HAS_DATABASE = True
+except (ImportError, AttributeError):
+    DatabaseManager = None
+    HAS_DATABASE = False
+    print("Note: Database support not available. Install with: pip install sqlalchemy psycopg2-binary")
 
 
 class PreprocessingExamples:
